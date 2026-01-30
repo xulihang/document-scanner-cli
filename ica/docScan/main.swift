@@ -29,7 +29,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
             scanner.documentName = "scan"
             scanner.documentUTI = kUTTypeJPEG as String
             if let functionalUnit = scanner.selectedFunctionalUnit as? ICScannerFunctionalUnit {
-                let resolutionIndex = functionalUnit.supportedResolutions.integerGreaterThanOrEqualTo(300) ?? functionalUnit.supportedResolutions.last
+                let resolutionIndex = functionalUnit.supportedResolutions.integerGreaterThanOrEqualTo(desiredResolution) ?? functionalUnit.supportedResolutions.last
                 if let resolutionIndex = resolutionIndex ?? functionalUnit.supportedResolutions.last {
                     functionalUnit.resolution = resolutionIndex
                 }
@@ -40,8 +40,14 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                 let heightInPoints = a4Height * 72.0 / 25.4
                 
                 functionalUnit.scanArea = NSMakeRect(0, 0, widthInPoints, heightInPoints)
-                functionalUnit.pixelDataType = .RGB
-                functionalUnit.bitDepth = .depth8Bits
+                functionalUnit.pixelDataType = pixelDataType
+                if pixelDataType == ICScannerPixelDataType.BW {
+                    functionalUnit.bitDepth = .depth1Bit
+                }else {
+                    functionalUnit.bitDepth = .depth8Bits
+                }
+                        
+                
 
                 scanner.requestScan()
             }
@@ -51,6 +57,8 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     private var deviceBrowser: ICDeviceBrowser!
     private var scanners: [ICScannerDevice] = []
     private var currentScanner: ICScannerDevice?
+    private var desiredResolution:Int = 300
+    private var pixelDataType:ICScannerPixelDataType = ICScannerPixelDataType.RGB
     private var scanCompletionHandler: ((Result<URL, Error>) -> Void)?
     private var targetURL: URL?
     
@@ -96,9 +104,19 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     
     // MARK: - Scan Operations
     
-    func startScan(scanner: ICScannerDevice, outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
+    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
         currentScanner = scanner
+        desiredResolution = resolution
         scanCompletionHandler = completion
+        
+        if colorMode.lowercased() == "color" {
+            pixelDataType = ICScannerPixelDataType.RGB
+        }else if colorMode.lowercased() == "lineart" {
+            pixelDataType = ICScannerPixelDataType.BW
+        }else if colorMode.lowercased() == "grayscale" {
+            pixelDataType = ICScannerPixelDataType.gray
+        }
+        
         targetURL = URL(fileURLWithPath: outputPath)
         
         scanner.delegate = self
@@ -127,12 +145,22 @@ func main() {
     var outputPath: String?
     var listScannersFlag = false
     var selectedScannerName: String?
+    var colorMode: String?
+    var resolution: String = "200"
     let arguments = CommandLine.arguments
     for i in 0..<arguments.count {
         switch arguments[i] {
         case "-o", "--output":
             if i+1 < arguments.count {
                 outputPath = arguments[i+1]
+            }
+        case "-r", "--resolution":
+            if i+1 < arguments.count {
+                resolution = arguments[i+1]
+            }
+        case "-m", "--mode":
+            if i+1 < arguments.count {
+                colorMode = arguments[i+1]
             }
         case "-L":
             listScannersFlag = true
@@ -169,9 +197,11 @@ func main() {
     if outputPath == nil {
         print("Usage: docScan [options]")
         print("Options:")
-        print("  -L          List all available scanners")
-        print("  -d <name>   Specify scanner by name")
-        print("  -o <path>   Output file path")
+        print("  -L                List all available scanners")
+        print("  -d <name>         Specify scanner by name")
+        print("  -m <mode>         Specify color mode")
+        print("  -r <resolution>   Specify resolution")
+        print("  -o <path>         Output file path")
         exit(1)
     }
     
@@ -197,8 +227,8 @@ func main() {
         }
         
         print("Selected scanner: \(selectedScanner.name ?? "Unknown")")
-        
-        scannerManager.startScan(scanner: selectedScanner, outputPath: outputPath!) { result in
+        let resInt:Int = Int(resolution) ?? 200
+        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color", outputPath: outputPath!) { result in
             switch result {
             case .success(let url):
                 print("Scan successfully saved to: \(url.path)")
