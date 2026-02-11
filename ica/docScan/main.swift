@@ -11,6 +11,56 @@ import AppKit
 
 
 class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
+    struct DocumentSize {
+        let type: ICScannerDocumentType
+        let width: CGFloat  // 短边
+        let height: CGFloat // 长边
+        
+        // 判断是否匹配（考虑容差和方向）
+        func matches(width: CGFloat, height: CGFloat, tolerance: CGFloat = 2.0) -> Bool {
+            let w = min(width, height)
+            let h = max(width, height)
+            return abs(self.width - w) <= tolerance && abs(self.height - h) <= tolerance
+        }
+    }
+    let supportedDocumentTypes: [DocumentSize] = [
+        DocumentSize(type: .typeA4, width: 210.0, height: 297.0),
+        DocumentSize(type: .typeUSLetter, width: 215.9, height: 279.4),    // 8.5 × 11 in
+        DocumentSize(type: .typeUSLegal, width: 215.9, height: 355.6),     // 8.5 × 14 in
+        DocumentSize(type: .typeA3, width: 297.0, height: 420.0),
+        DocumentSize(type: .typeA5, width: 148.0, height: 210.0),
+        DocumentSize(type: .typeA6, width: 105.0, height: 148.0),
+        DocumentSize(type: .typeB5, width: 176.0, height: 250.0),
+        DocumentSize(type: .typeUSExecutive, width: 184.2, height: 266.7), // 7.25 × 10.5 in
+        DocumentSize(type: .typeJISB4, width: 257.0, height: 364.0),
+        DocumentSize(type: .typeJISB6, width: 128.0, height: 182.0),
+        DocumentSize(type: .typeA2, width: 420.0, height: 594.0),
+        DocumentSize(type: .typeA1, width: 594.0, height: 841.0),
+        DocumentSize(type: .typeA0, width: 841.0, height: 1189.0)
+    ]
+    func detectDocumentType(width: CGFloat, height: CGFloat) -> ICScannerDocumentType {
+        // 先尝试匹配标准尺寸
+        for size in supportedDocumentTypes {
+            if size.matches(width: width, height: height) {
+                return size.type
+            }
+        }
+        
+        // 未匹配到标准尺寸时的降级策略：
+        // 1. 根据面积判断大致范围
+        let area = width * height
+        
+        if area > 100000 { // > A3
+            return .typeA3
+        } else if area > 40000 { // A3 ~ A4 之间
+            return .typeA4
+        } else if area > 20000 { // A4 ~ A5 之间
+            return .typeA5
+        } else {
+            return .typeA6
+        }
+    }
+    
     func device(_ device: ICDevice, didCloseSessionWithError error: (any Error)?) {
         print("did close")
     }
@@ -40,15 +90,24 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                 if let resolutionIndex = resolutionIndex ?? functionalUnit.supportedResolutions.last {
                     functionalUnit.resolution = resolutionIndex
                 }
-                if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
-                    print("feeder supported")
-                }
+                var hasFeeder = false
+                
                 let a4Width: CGFloat = 210.0 // mm
                 let a4Height: CGFloat = 297.0 // mm
                 let widthInPoints = a4Width * 72.0 / 25.4 // convert to point
                 let heightInPoints = a4Height * 72.0 / 25.4
                 
-                functionalUnit.scanArea = NSMakeRect(0, 0, widthInPoints, heightInPoints)
+                if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
+                    print("feeder supported")
+                    hasFeeder = true
+                    feederFunctionalUnit.documentType = detectDocumentType(width: a4Width, height: a4Height)
+                }
+                
+                if hasFeeder == false {
+                    print("setting scan area")
+                    functionalUnit.scanArea = NSMakeRect(0, 0, widthInPoints, heightInPoints)
+                }
+                
                 functionalUnit.pixelDataType = pixelDataType
                 if pixelDataType == ICScannerPixelDataType.BW {
                     functionalUnit.bitDepth = .depth1Bit
