@@ -9,6 +9,17 @@ import Foundation
 import ImageCaptureCore
 import AppKit
 
+extension String {
+    /// 安全地将字符串转换为 CGFloat
+    var cgFloatValue: CGFloat? {
+        Double(self).map { CGFloat($0) }
+    }
+    
+    /// 带默认值的转换
+    func cgFloat(default: CGFloat = 0) -> CGFloat {
+        self.cgFloatValue ?? `default`
+    }
+}
 
 class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
     struct DocumentSize {
@@ -92,20 +103,20 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                 }
                 var hasFeeder = false
                 
-                let a4Width: CGFloat = 210.0 // mm
-                let a4Height: CGFloat = 297.0 // mm
-                let widthInPoints = a4Width * 72.0 / 25.4 // convert to point
-                let heightInPoints = a4Height * 72.0 / 25.4
+                let pageWidth: CGFloat = desiredPageWidth // mm
+                let pageHeight: CGFloat = desiredPageHeight // mm
+                let widthInPoints = pageWidth * 72.0 / 25.4 // convert to point
+                let heightInPoints = pageHeight * 72.0 / 25.4
                 
                 if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
                     print("feeder supported")
                     hasFeeder = true
-                    feederFunctionalUnit.documentType = detectDocumentType(width: a4Width, height: a4Height)
+                    feederFunctionalUnit.documentType = detectDocumentType(width: pageWidth, height: pageHeight)
                 }
                 
                 if hasFeeder == false {
                     print("setting scan area")
-                    functionalUnit.scanArea = NSMakeRect(0, 0, widthInPoints, heightInPoints)
+                    functionalUnit.scanArea = NSMakeRect(desiredLeft, desiredTop, widthInPoints, heightInPoints)
                 }
                 
                 functionalUnit.pixelDataType = pixelDataType
@@ -126,6 +137,10 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     private var scanners: [ICScannerDevice] = []
     private var currentScanner: ICScannerDevice?
     private var desiredResolution:Int = 300
+    private var desiredLeft:CGFloat = 0.0
+    private var desiredTop:CGFloat = 0.0
+    private var desiredPageWidth:CGFloat = 210.0
+    private var desiredPageHeight:CGFloat = 297.0
     private var pixelDataType:ICScannerPixelDataType = ICScannerPixelDataType.RGB
     private var scanCompletionHandler: ((Result<URL, Error>) -> Void)?
     private var targetURL: URL?
@@ -184,11 +199,14 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     
     // MARK: - Scan Operations
     
-    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
+    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, left:CGFloat,top:CGFloat,pageWidth:CGFloat,pageHeight:CGFloat,outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
         currentScanner = scanner
         desiredResolution = resolution
         scanCompletionHandler = completion
-        
+        desiredTop = top
+        desiredLeft = left
+        desiredPageWidth = pageWidth
+        desiredPageHeight = pageHeight
         if colorMode.lowercased() == "color" {
             pixelDataType = ICScannerPixelDataType.RGB
         }else if colorMode.lowercased() == "lineart" {
@@ -226,6 +244,10 @@ func main() {
     var selectedScannerName: String?
     var colorMode: String?
     var resolution: String = "200"
+    var left:CGFloat = 0.0
+    var top:CGFloat = 0.0
+    var pageWidth:CGFloat = 210.0
+    var pageHeight:CGFloat = 297.0
     let arguments = CommandLine.arguments
     for i in 0..<arguments.count {
         switch arguments[i] {
@@ -240,6 +262,22 @@ func main() {
         case "-m", "--mode":
             if i+1 < arguments.count {
                 colorMode = arguments[i+1]
+            }
+        case "-l", "--left":
+            if i+1 < arguments.count {
+                left = arguments[i+1].cgFloat(default: 0.0)
+            }
+        case "-t", "--top":
+            if i+1 < arguments.count {
+                top = arguments[i+1].cgFloat(default: 0.0)
+            }
+        case "-x", "--width":
+            if i+1 < arguments.count {
+                pageWidth = arguments[i+1].cgFloat(default: 210.0)
+            }
+        case "-y", "--height":
+            if i+1 < arguments.count {
+                pageHeight = arguments[i+1].cgFloat(default: 297.0)
             }
         case "-L":
             listScannersFlag = true
@@ -280,7 +318,11 @@ func main() {
         print("  -d <name>         Specify scanner by name")
         print("  -m <mode>         Specify color mode")
         print("  -r <resolution>   Specify resolution")
-        print("  -o <path>         Output file path")
+        print("  -o <path>         Output file/folder path")
+        print("  -l <page left>    Page left")
+        print("  -y <page top>     Page top")
+        print("  -x <page width>   Page width")
+        print("  -y <page height>  Page height")
         exit(1)
     }
     
@@ -307,7 +349,7 @@ func main() {
         
         print("Selected scanner: \(selectedScanner.name ?? "Unknown")")
         let resInt:Int = Int(resolution) ?? 200
-        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color", outputPath: outputPath!) { result in
+        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color", left: left,top: top,pageWidth: pageWidth,pageHeight: pageHeight,outputPath: outputPath!) { result in
             switch result {
             case .success(let url):
                 print("Scan successfully saved to: \(url.path)")
