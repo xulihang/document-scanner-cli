@@ -24,16 +24,25 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self = self else { return }
             guard let scanner = currentScanner else { return }
+            
             scanner.transferMode = .fileBased
-            scanner.downloadsDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-            scanner.documentName = "scan"
+            
+            if targetURL?.hasDirectoryPath ?? false {
+                scanner.downloadsDirectory = targetURL!
+            }else{
+                scanner.downloadsDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            }
+            
+            scanner.documentName = "scanned"
             scanner.documentUTI = kUTTypeJPEG as String
             if let functionalUnit = scanner.selectedFunctionalUnit as? ICScannerFunctionalUnit {
                 let resolutionIndex = functionalUnit.supportedResolutions.integerGreaterThanOrEqualTo(desiredResolution) ?? functionalUnit.supportedResolutions.last
                 if let resolutionIndex = resolutionIndex ?? functionalUnit.supportedResolutions.last {
                     functionalUnit.resolution = resolutionIndex
                 }
-                
+                if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
+                    print("feeder supported")
+                }
                 let a4Width: CGFloat = 210.0 // mm
                 let a4Height: CGFloat = 297.0 // mm
                 let widthInPoints = a4Width * 72.0 / 25.4 // convert to point
@@ -90,6 +99,9 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     func scannerDevice(_ scanner: ICScannerDevice, didScanTo url: URL) {
         print("did scan to")
         print(url.absoluteString)
+        if targetURL?.hasDirectoryPath ?? false {
+           return
+        }
         guard let targetURL = targetURL else {
             scanCompletionHandler?(.failure(NSError(domain: "ScannerError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No target URL set"])))
             return
@@ -99,6 +111,15 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
             scanCompletionHandler?(.success(targetURL))
         } catch {
             scanCompletionHandler?(.failure(error))
+        }
+    }
+    
+    func scannerDevice(_ scanner: ICScannerDevice, didCompleteScanWithError: (any Error)?) {
+        print("scan completed")
+        if didCompleteScanWithError == nil {
+            scanCompletionHandler?(.success(targetURL!))
+        }else{
+            scanCompletionHandler?(.failure(didCompleteScanWithError!))
         }
     }
     
@@ -121,7 +142,6 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         
         scanner.delegate = self
         scanner.requestOpenSession()
-        
 
     }
     
