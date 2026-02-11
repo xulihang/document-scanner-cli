@@ -112,6 +112,11 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                     print("feeder supported")
                     hasFeeder = true
                     feederFunctionalUnit.documentType = detectDocumentType(width: pageWidth, height: pageHeight)
+                    if feederFunctionalUnit.supportsDuplexScanning {
+                        if ifDuplex {
+                            feederFunctionalUnit.duplexScanningEnabled = true
+                        }
+                    }
                 }
                 
                 if hasFeeder == false {
@@ -141,6 +146,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     private var desiredTop:CGFloat = 0.0
     private var desiredPageWidth:CGFloat = 210.0
     private var desiredPageHeight:CGFloat = 297.0
+    private var ifDuplex:Bool = false
     private var pixelDataType:ICScannerPixelDataType = ICScannerPixelDataType.RGB
     private var scanCompletionHandler: ((Result<URL, Error>) -> Void)?
     private var targetURL: URL?
@@ -199,7 +205,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     
     // MARK: - Scan Operations
     
-    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, left:CGFloat,top:CGFloat,pageWidth:CGFloat,pageHeight:CGFloat,outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
+    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, duplex:Bool,left:CGFloat,top:CGFloat,pageWidth:CGFloat,pageHeight:CGFloat,outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
         currentScanner = scanner
         desiredResolution = resolution
         scanCompletionHandler = completion
@@ -207,6 +213,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         desiredLeft = left
         desiredPageWidth = pageWidth
         desiredPageHeight = pageHeight
+        ifDuplex = duplex
         if colorMode.lowercased() == "color" {
             pixelDataType = ICScannerPixelDataType.RGB
         }else if colorMode.lowercased() == "lineart" {
@@ -246,6 +253,7 @@ func main() {
     var resolution: String = "200"
     var left:CGFloat = 0.0
     var top:CGFloat = 0.0
+    var duplex:Bool = false
     var pageWidth:CGFloat = 210.0
     var pageHeight:CGFloat = 297.0
     let arguments = CommandLine.arguments
@@ -259,6 +267,8 @@ func main() {
             if i+1 < arguments.count {
                 resolution = arguments[i+1]
             }
+        case "--duplex":
+            duplex = true
         case "-m", "--mode":
             if i+1 < arguments.count {
                 colorMode = arguments[i+1]
@@ -323,6 +333,7 @@ func main() {
         print("  -y <page top>     Page top")
         print("  -x <page width>   Page width")
         print("  -y <page height>  Page height")
+        print("  --duplex          Enable duplex")
         exit(1)
     }
     
@@ -349,7 +360,7 @@ func main() {
         
         print("Selected scanner: \(selectedScanner.name ?? "Unknown")")
         let resInt:Int = Int(resolution) ?? 200
-        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color", left: left,top: top,pageWidth: pageWidth,pageHeight: pageHeight,outputPath: outputPath!) { result in
+        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color",duplex: duplex, left: left,top: top,pageWidth: pageWidth,pageHeight: pageHeight,outputPath: outputPath!) { result in
             switch result {
             case .success(let url):
                 print("Scan successfully saved to: \(url.path)")
