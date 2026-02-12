@@ -22,6 +22,7 @@ extension String {
 }
 
 class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
+    private var signalSources: [DispatchSourceSignal] = []
     struct DocumentSize {
         let type: ICScannerDocumentType
         let width: CGFloat  // 短边
@@ -49,6 +50,15 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         DocumentSize(type: .typeA1, width: 594.0, height: 841.0),
         DocumentSize(type: .typeA0, width: 841.0, height: 1189.0)
     ]
+    // 添加取消扫描的方法
+    func cancelScan() {
+         if let scanner = currentScanner {
+             scanner.cancelScan()
+             scanner.requestCloseSession()
+             print("扫描已取消")
+         }
+     }
+    
     func detectDocumentType(width: CGFloat, height: CGFloat) -> ICScannerDocumentType {
         // 先尝试匹配标准尺寸
         for size in supportedDocumentTypes {
@@ -245,6 +255,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
 
 func main() {
     let scannerManager = ScannerManager()
+    scannerManager.setupSignalHandlers() 
     // Parse command line arguments
     var outputPath: String?
     var listScannersFlag = false
@@ -372,6 +383,48 @@ func main() {
     }
     
     RunLoop.current.run()
+}
+extension ScannerManager {
+    func setupSignalHandlers() {
+        // 1. 必须先忽略信号，DispatchSource 才能捕获
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+        signal(SIGPIPE, SIG_IGN) // 避免管道错误崩溃
+
+        // 2. 创建 SIGINT (Ctrl+C) 监听器
+        let intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        intSource.setEventHandler { [weak self] in
+            // 使用 stderr 确保立即输出（stdout 可能被缓冲）
+            fputs("\n🛑 检测到 Ctrl+C，正在取消扫描...\n", stderr)
+            fflush(stderr)
+            
+            self?.cancelScan()
+            
+            // 给硬件 2 秒响应时间后再退出
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                fputs("✓ 扫描已取消，安全退出\n", stderr)
+                fflush(stderr)
+                exit(0)
+            }
+        }
+        intSource.resume()
+        signalSources.append(intSource) // 👈 保持强引用！
+
+        // 3. 创建 SIGTERM 监听器（可选）
+        let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        termSource.setEventHandler { [weak self] in
+            fputs("\n🛑 收到终止信号，取消扫描...\n", stderr)
+            fflush(stderr)
+            self?.cancelScan()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                fputs("✓ 安全退出\n", stderr)
+                fflush(stderr)
+                exit(0)
+            }
+        }
+        termSource.resume()
+        signalSources.append(termSource) // 👈 保持强引用！
+    }
 }
 
 main()
