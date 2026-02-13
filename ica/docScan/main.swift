@@ -208,6 +208,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         }
         do {
             try FileManager.default.moveItem(at: url, to: targetURL)
+            scanCounter += 1
             scanCompletionHandler?(.success(targetURL))
         } catch {
             scanCompletionHandler?(.failure(error))
@@ -217,7 +218,11 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     func scannerDevice(_ scanner: ICScannerDevice, didCompleteScanWithError: (any Error)?) {
         print("scan completed")
         if didCompleteScanWithError == nil {
-            scanCompletionHandler?(.success(targetURL!))
+            if scanCounter == 1 {
+                scanCompletionHandler?(.failure(NSError(domain: "ScannerError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No documents scanned"])))
+            }else{
+                scanCompletionHandler?(.success(targetURL!))
+            }
         }else{
             scanCompletionHandler?(.failure(didCompleteScanWithError!))
         }
