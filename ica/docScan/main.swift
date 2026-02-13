@@ -160,6 +160,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     private var pixelDataType:ICScannerPixelDataType = ICScannerPixelDataType.RGB
     private var scanCompletionHandler: ((Result<URL, Error>) -> Void)?
     private var targetURL: URL?
+    private var scanCounter: Int = 1 // 添加计数器
     
     override init() {
         super.init()
@@ -190,7 +191,16 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         print("did scan to")
         print(url.absoluteString)
         if targetURL?.hasDirectoryPath ?? false {
-           return
+            let fileName = String(format: "scanned_%d.jpg", scanCounter)
+            scanCounter += 1
+            let destinationURL = targetURL!.appendingPathComponent(fileName)
+            do {
+                try FileManager.default.moveItem(at: url, to: destinationURL)
+                print("Moved file to: \(destinationURL.path)")
+            } catch {
+                print("Move file failed: \(error)")
+            }
+            return
         }
         guard let targetURL = targetURL else {
             scanCompletionHandler?(.failure(NSError(domain: "ScannerError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No target URL set"])))
@@ -231,7 +241,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         }else if colorMode.lowercased() == "grayscale" {
             pixelDataType = ICScannerPixelDataType.gray
         }
-        
+        scanCounter = 1
         targetURL = URL(fileURLWithPath: outputPath)
         
         scanner.delegate = self
@@ -304,7 +314,7 @@ func main() {
             listScannersFlag = true
         case "-d":
             if i+1 < arguments.count {
-                selectedScannerName = arguments[i+1]
+                selectedScannerName = arguments[i+1].replacingOccurrences(of: "\"", with: "")
             } else {
                 print("Error: -d requires a scanner name argument")
                 exit(1)
@@ -359,7 +369,7 @@ func main() {
             print("No scanners not found.")
             exit(1)
         }
-        
+        print("selectedScannerName: "+(selectedScannerName ?? ""))
         if selectedScannerName != "" {
             for scanner in scanners {
                 if scanner.name == selectedScannerName {
