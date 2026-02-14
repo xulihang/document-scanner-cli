@@ -131,7 +131,9 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                 
                 if hasFeeder == false {
                     print("setting scan area")
-                    functionalUnit.scanArea = NSMakeRect(desiredLeft, desiredTop, widthInPoints, heightInPoints)
+                    functionalUnit.measurementUnit = .centimeters
+                    functionalUnit.scanArea = NSMakeRect(desiredLeft / 10, desiredTop / 10, pageWidth / 10, pageHeight / 10)
+                    
                 }
                 
                 functionalUnit.pixelDataType = pixelDataType
