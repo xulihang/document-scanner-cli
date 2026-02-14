@@ -115,8 +115,8 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                 
                 let pageWidth: CGFloat = desiredPageWidth // mm
                 let pageHeight: CGFloat = desiredPageHeight // mm
-                let widthInPoints = pageWidth * 72.0 / 25.4 // convert to point
-                let heightInPoints = pageHeight * 72.0 / 25.4
+                //let widthInPoints = pageWidth * 72.0 / 25.4 // convert to point
+                //let heightInPoints = pageHeight * 72.0 / 25.4
                 
                 if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
                     print("feeder supported")
