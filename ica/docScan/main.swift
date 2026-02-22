@@ -95,58 +95,52 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self = self else { return }
             guard let scanner = currentScanner else { return }
-            
-            scanner.transferMode = .fileBased
-            
-            if targetURL?.hasDirectoryPath ?? false {
-                scanner.downloadsDirectory = targetURL!
-            }else{
-                scanner.downloadsDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-            }
-            
-            scanner.documentName = "scanned"
-            scanner.documentUTI = kUTTypeJPEG as String
-            if let functionalUnit = scanner.selectedFunctionalUnit as? ICScannerFunctionalUnit {
-                let resolutionIndex = functionalUnit.supportedResolutions.integerGreaterThanOrEqualTo(desiredResolution) ?? functionalUnit.supportedResolutions.last
-                if let resolutionIndex = resolutionIndex ?? functionalUnit.supportedResolutions.last {
-                    functionalUnit.resolution = resolutionIndex
-                }
-                var hasFeeder = false
-                
-                let pageWidth: CGFloat = desiredPageWidth // mm
-                let pageHeight: CGFloat = desiredPageHeight // mm
-                //let widthInPoints = pageWidth * 72.0 / 25.4 // convert to point
-                //let heightInPoints = pageHeight * 72.0 / 25.4
-                
-                if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
-                    print("feeder supported")
-                    hasFeeder = true
-                    feederFunctionalUnit.documentType = detectDocumentType(width: pageWidth, height: pageHeight)
-                    if feederFunctionalUnit.supportsDuplexScanning {
-                        if ifDuplex {
-                            feederFunctionalUnit.duplexScanningEnabled = true
-                        }
+            let source = desiredSource
+
+            if source == "negative" {
+                print("try to select negative")
+                for type in scanner.availableFunctionalUnitTypes {
+                    if type.intValue == ICScannerFunctionalUnitType.negativeTransparency.rawValue {
+                        print("select negative")
+                        desiredSource = ""
+                        scanner.requestSelect(ICScannerFunctionalUnitType.negativeTransparency)
+                        return
                     }
                 }
-                
-                if hasFeeder == false {
-                    print("setting scan area")
-                    functionalUnit.measurementUnit = .centimeters
-                    functionalUnit.scanArea = NSMakeRect(desiredLeft / 10, desiredTop / 10, pageWidth / 10, pageHeight / 10)
-                    
+            }else if source == "positive" {
+                print("try to select positive")
+                for type in scanner.availableFunctionalUnitTypes {
+                    if type.intValue == ICScannerFunctionalUnitType.positiveTransparency.rawValue {
+                        print("select positive")
+                        desiredSource = ""
+                        scanner.requestSelect(ICScannerFunctionalUnitType.positiveTransparency)
+                        return
+                    }
                 }
-                
-                functionalUnit.pixelDataType = pixelDataType
-                if pixelDataType == ICScannerPixelDataType.BW {
-                    functionalUnit.bitDepth = .depth1Bit
-                }else {
-                    functionalUnit.bitDepth = .depth8Bits
+            }else if source == "flatbed" {
+                print("try to select flatbed")
+                for type in scanner.availableFunctionalUnitTypes {
+                    print(type.intValue)
+                    print(ICScannerFunctionalUnitType.flatbed.rawValue)
+                    if type.intValue == ICScannerFunctionalUnitType.flatbed.rawValue {
+                        print("select flatbed")
+                        desiredSource = ""
+                        scanner.requestSelect(ICScannerFunctionalUnitType.flatbed)
+                        return
+                    }
                 }
-                        
-                
-
-                scanner.requestScan()
+            }else if source == "feeder" {
+                print("try to select feeder")
+                for type in scanner.availableFunctionalUnitTypes {
+                    if type.intValue == ICScannerFunctionalUnitType.documentFeeder.rawValue {
+                        print("select feeder")
+                        desiredSource = ""
+                        scanner.requestSelect(ICScannerFunctionalUnitType.documentFeeder)
+                        return
+                    }
+                }
             }
+            scan()
         }
     }
     
@@ -163,6 +157,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     private var scanCompletionHandler: ((Result<URL, Error>) -> Void)?
     private var targetURL: URL?
     private var scanCounter: Int = 1 // 添加计数器
+    private var desiredSource = ""
     
     override init() {
         super.init()
@@ -187,7 +182,71 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         }
     }
     
+    func scan(){
+        print("start scanning")
+        guard let scanner = currentScanner else { return }
+        scanner.transferMode = .fileBased
+        
+        if targetURL?.hasDirectoryPath ?? false {
+            scanner.downloadsDirectory = targetURL!
+        }else{
+            scanner.downloadsDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+        }
+        
+        scanner.documentName = "scanned"
+        scanner.documentUTI = kUTTypeJPEG as String
+        
+        if let functionalUnit = scanner.selectedFunctionalUnit as? ICScannerFunctionalUnit {
+            let resolutionIndex = functionalUnit.supportedResolutions.integerGreaterThanOrEqualTo(desiredResolution) ?? functionalUnit.supportedResolutions.last
+            if let resolutionIndex = resolutionIndex ?? functionalUnit.supportedResolutions.last {
+                functionalUnit.resolution = resolutionIndex
+            }
+            var hasFeeder = false
+            
+            let pageWidth: CGFloat = desiredPageWidth // mm
+            let pageHeight: CGFloat = desiredPageHeight // mm
+            //let widthInPoints = pageWidth * 72.0 / 25.4 // convert to point
+            //let heightInPoints = pageHeight * 72.0 / 25.4
+            
+            if let feederFunctionalUnit = functionalUnit as? ICScannerFunctionalUnitDocumentFeeder {
+                print("feeder supported")
+                hasFeeder = true
+                feederFunctionalUnit.documentType = detectDocumentType(width: pageWidth, height: pageHeight)
+                if feederFunctionalUnit.supportsDuplexScanning {
+                    if ifDuplex {
+                        feederFunctionalUnit.duplexScanningEnabled = true
+                    }
+                }
+            }
+            
+            if hasFeeder == false {
+                print("setting scan area")
+                functionalUnit.measurementUnit = .centimeters
+                functionalUnit.scanArea = NSMakeRect(desiredLeft / 10, desiredTop / 10, pageWidth / 10, pageHeight / 10)
+                
+            }
+            
+            functionalUnit.pixelDataType = pixelDataType
+            if pixelDataType == ICScannerPixelDataType.BW {
+                functionalUnit.bitDepth = .depth1Bit
+            }else {
+                functionalUnit.bitDepth = .depth8Bits
+            }
+                    
+            
+            print("requestScan")
+            scanner.requestScan()
+        }
+    }
+    
     // MARK: - ICScannerDeviceDelegate
+    func scannerDevice(_ scanner: ICScannerDevice, didSelect functionalUnit: ICScannerFunctionalUnit, error: (any Error)?) {
+        print("did select")
+        if desiredSource == "" {
+            scan()
+        }
+       
+    }
     
     func scannerDevice(_ scanner: ICScannerDevice, didScanTo url: URL) {
         print("did scan to")
@@ -221,6 +280,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         print("scan completed")
         if didCompleteScanWithError == nil {
             if scanCounter == 1 {
+                print(didCompleteScanWithError.debugDescription)
                 scanCompletionHandler?(.failure(NSError(domain: "ScannerError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No documents scanned"])))
             }else{
                 scanCompletionHandler?(.success(targetURL!))
@@ -232,7 +292,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     
     // MARK: - Scan Operations
     
-    func startScan(scanner: ICScannerDevice,resolution: Int,colorMode:String, duplex:Bool,left:CGFloat,top:CGFloat,pageWidth:CGFloat,pageHeight:CGFloat,outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
+    func startScan(scanner: ICScannerDevice,source:String,resolution: Int,colorMode:String, duplex:Bool,left:CGFloat,top:CGFloat,pageWidth:CGFloat,pageHeight:CGFloat,outputPath: String, completion: @escaping (Result<URL, Error>) -> Void) {
         currentScanner = scanner
         desiredResolution = resolution
         scanCompletionHandler = completion
@@ -250,6 +310,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         }
         scanCounter = 1
         targetURL = URL(fileURLWithPath: outputPath)
+        desiredSource = source
         
         scanner.delegate = self
         scanner.requestOpenSession()
@@ -285,6 +346,7 @@ func main() {
     var pageWidth:CGFloat = 210.0
     var pageHeight:CGFloat = 297.0
     let arguments = CommandLine.arguments
+    var source = ""
     for i in 0..<arguments.count {
         switch arguments[i] {
         case "-o", "--output":
@@ -294,6 +356,10 @@ func main() {
         case "-r", "--resolution":
             if i+1 < arguments.count {
                 resolution = arguments[i+1]
+            }
+        case "-s", "--source":
+            if i+1 < arguments.count {
+                source = arguments[i+1]
             }
         case "--duplex":
             duplex = true
@@ -353,6 +419,7 @@ func main() {
         print("Usage: docScan [options]")
         print("Options:")
         print("  -L                List all available scanners")
+        print("  -s <name>         Specify source: feeder, positive, negative, flatbed")
         print("  -d <name>         Specify scanner by name")
         print("  -m <mode>         Specify color mode")
         print("  -r <resolution>   Specify resolution")
@@ -388,7 +455,7 @@ func main() {
         
         print("Selected scanner: \(selectedScanner.name ?? "Unknown")")
         let resInt:Int = Int(resolution) ?? 200
-        scannerManager.startScan(scanner: selectedScanner,resolution: resInt,colorMode: colorMode ?? "color",duplex: duplex, left: left,top: top,pageWidth: pageWidth,pageHeight: pageHeight,outputPath: outputPath!) { result in
+        scannerManager.startScan(scanner: selectedScanner,source:source,resolution: resInt,colorMode: colorMode ?? "color",duplex: duplex, left: left,top: top,pageWidth: pageWidth,pageHeight: pageHeight,outputPath: outputPath!) { result in
             switch result {
             case .success(let url):
                 print("Scan successfully saved to: \(url.path)")
